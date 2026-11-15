@@ -1,0 +1,6 @@
+{
+  "name": "Smart School Library BD",
+  "description": "পড়ো, জানো, এগিয়ে যাও... Native Android digital school library for Classes 5–10 in Bangladesh featuring NCTB textbooks, guides, general knowledge, MCQ exams, and personal notebook.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

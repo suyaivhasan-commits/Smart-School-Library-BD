@@ -1,0 +1,11 @@
+<resources>
+    <string name="app_name">Smart School Library BD</string>
+    <string name="app_tagline">পড়ো, জানো, এগিয়ে যাও...</string>
+    <string name="app_tagline_en">পড়ো, জানো, এগিয়ে যাও...</string>
+    <string name="loading_bn">লোড হচ্ছে...</string>
+    <string name="sign_in_google">Google দিয়ে সাইন ইন করুন</string>
+    <string name="nav_home">হোম</string>
+    <string name="nav_library">লাইব্রেরি</string>
+    <string name="nav_bookmarks">বুকমার্ক</string>
+    <string name="nav_profile">প্রোফাইল</string>
+</resources>

@@ -1,0 +1,102 @@
+rules_version = '2';
+
+// Firebase Storage Security Rules — Smart School Library BD
+// Project: smart-school-library-bd
+// Trusted Super Admin UID: yyskhmPvvfeNl572FnVhZgYAaQx2
+service firebase.storage {
+  match /b/{bucket}/o {
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    // Strictly restrict all binary uploads, replacements, and deletions to the single trusted Super Admin UID
+    function isSuperAdmin() {
+      return isSignedIn() && request.auth.uid == 'yyskhmPvvfeNl572FnVhZgYAaQx2';
+    }
+
+    function isValidSegment(seg) {
+      return seg is string && seg.size() >= 1 && seg.size() <= 128 && seg.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function hasActiveClassSubscription(classNum, streamCode) {
+      let specificSubId = 'sub_' + request.auth.uid + '_c' + string(classNum) + '_' + streamCode;
+      let allStreamSubId = 'sub_' + request.auth.uid + '_c' + string(classNum) + '_ALL';
+      return (
+        firestore.exists(/databases/(default)/documents/subscriptions/$(specificSubId)) &&
+        firestore.get(/databases/(default)/documents/subscriptions/$(specificSubId)).data.status == 'ACTIVE' &&
+        firestore.get(/databases/(default)/documents/subscriptions/$(specificSubId)).data.expiryDate > request.time
+      ) || (
+        firestore.exists(/databases/(default)/documents/subscriptions/$(allStreamSubId)) &&
+        firestore.get(/databases/(default)/documents/subscriptions/$(allStreamSubId)).data.status == 'ACTIVE' &&
+        firestore.get(/databases/(default)/documents/subscriptions/$(allStreamSubId)).data.expiryDate > request.time
+      );
+    }
+
+    // Paid PDFs are never exposed via public URLs: students must be signed in AND satisfy published + subscription rules
+    function canReadContentPdf(itemId) {
+      return isSuperAdmin() || (
+        isSignedIn() && (
+          (
+            firestore.exists(/databases/(default)/documents/books/$(itemId)) &&
+            firestore.get(/databases/(default)/documents/books/$(itemId)).data.isPublished == true &&
+            (
+              firestore.get(/databases/(default)/documents/books/$(itemId)).data.isPremium == false ||
+              hasActiveClassSubscription(
+                firestore.get(/databases/(default)/documents/books/$(itemId)).data.classNumber,
+                firestore.get(/databases/(default)/documents/books/$(itemId)).data.stream
+              )
+            )
+          ) || (
+            firestore.exists(/databases/(default)/documents/guides/$(itemId)) &&
+            firestore.get(/databases/(default)/documents/guides/$(itemId)).data.isPublished == true &&
+            (
+              firestore.get(/databases/(default)/documents/guides/$(itemId)).data.isPremium == false ||
+              hasActiveClassSubscription(
+                firestore.get(/databases/(default)/documents/guides/$(itemId)).data.classNumber,
+                firestore.get(/databases/(default)/documents/guides/$(itemId)).data.stream
+              )
+            )
+          )
+        )
+      );
+    }
+
+    // 1. Original Complete Book & Guide PDFs: books/{classId}/{bookId}/original_book.pdf
+    match /books/{classId}/{bookId}/original_book.pdf {
+      allow get: if isValidSegment(classId) && isValidSegment(bookId) && canReadContentPdf(bookId);
+      allow list: if isSuperAdmin();
+      allow create, update: if isSuperAdmin() &&
+                               isValidSegment(classId) &&
+                               isValidSegment(bookId) &&
+                               request.resource != null &&
+                               request.resource.size > 0 &&
+                               request.resource.size <= 250 * 1024 * 1024 &&
+                               request.resource.contentType == 'application/pdf';
+      allow delete: if isSuperAdmin() && isValidSegment(classId) && isValidSegment(bookId);
+    }
+
+    // 2. Book & Guide Cover Images: book_covers/{classId}/{bookId}/cover.{jpg|jpeg|png|webp}
+    match /book_covers/{classId}/{bookId}/{coverFile} {
+      allow get: if isSignedIn() &&
+                    isValidSegment(classId) &&
+                    isValidSegment(bookId) &&
+                    coverFile.matches('^cover\\.(jpg|jpeg|png|webp)$');
+      allow list: if isSuperAdmin();
+      allow create, update: if isSuperAdmin() &&
+                               isValidSegment(classId) &&
+                               isValidSegment(bookId) &&
+                               coverFile.matches('^cover\\.(jpg|jpeg|png|webp)$') &&
+                               request.resource != null &&
+                               request.resource.size > 0 &&
+                               request.resource.size <= 15 * 1024 * 1024 &&
+                               request.resource.contentType.matches('^image/(jpeg|jpg|png|webp)$');
+      allow delete: if isSuperAdmin() && isValidSegment(classId) && isValidSegment(bookId);
+    }
+
+    // Global Default-Deny Safety Net
+    match /{allPaths=**} {
+      allow read, write: if false;
+    }
+  }
+}

@@ -1,0 +1,14 @@
+{
+  "name": "smart-school-storage-worker",
+  "version": "1.0.0",
+  "description": "Secure Cloudflare Workers Backend for Smart School Library BD and Backblaze B2 Storage",
+  "main": "src/index.js",
+  "scripts": {
+    "start": "wrangler dev",
+    "deploy": "wrangler deploy"
+  },
+  "dependencies": {},
+  "devDependencies": {
+    "wrangler": "^3.100.0"
+  }
+}

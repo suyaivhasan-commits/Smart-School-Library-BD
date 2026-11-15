@@ -1,0 +1,40 @@
+{
+  "project_info": {
+    "project_number": "747711256943",
+    "firebase_url": "https://smart-school-library-bd-default-rtdb.firebaseio.com",
+    "project_id": "smart-school-library-bd",
+    "storage_bucket": "smart-school-library-bd.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:747711256943:android:743e39aefbce707f98309a",
+        "android_client_info": {
+          "package_name": "com.SmartSchoolLibraryBD"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "747711256943-7vtvv56h0lqfgq1r425rf5a4lb9p2ej4.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCHwIq1PaWSZFI4Yxa-_WA7i-QrX8_ia4A"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "747711256943-7vtvv56h0lqfgq1r425rf5a4lb9p2ej4.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

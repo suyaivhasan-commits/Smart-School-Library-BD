@@ -1,0 +1,861 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // 0. Global Default-Deny Safety Net (Zero-Trust Fallback for Unknown Paths)
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // =========================================================================
+    // CORE SECURITY PRIMITIVES
+    // =========================================================================
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    // Trusted Super Admin UID: yyskhmPvvfeNl572FnVhZgYAaQx2
+    function isSuperAdmin() {
+      return isSignedIn() && request.auth.uid == 'yyskhmPvvfeNl572FnVhZgYAaQx2';
+    }
+
+    function isOwner(uid) {
+      return isSignedIn() && request.auth.uid == uid;
+    }
+
+    function isOwnerPrefixedId(docId) {
+      return isSignedIn() &&
+             docId.size() > (request.auth.uid.size() + 1) &&
+             docId[0:(request.auth.uid.size() + 1)] == (request.auth.uid + '_');
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() >= 1 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function isValidTimestamp(ts) {
+      return ts is timestamp && ts <= request.time;
+    }
+
+    function isOptString(data, field, maxLen) {
+      return !(field in data) || data[field] == null || (data[field] is string && data[field].size() <= maxLen);
+    }
+
+    // =========================================================================
+    // ENTITY SCHEMA VALIDATION HELPERS (ANTI-UPDATE-GAP)
+    // =========================================================================
+
+    function isValidUserProfile(data) {
+      return data.keys().hasAll(['userId', 'name', 'email', 'role', 'selectedClass', 'selectedStream', 'isActive', 'accountDeletionRequested', 'createdAt', 'updatedAt']) &&
+             data.keys().hasOnly(['userId', 'name', 'email', 'role', 'selectedClass', 'selectedStream', 'photoUrl', 'isActive', 'accountDeletionRequested', 'createdAt', 'updatedAt']) &&
+             data.userId is string && data.userId.size() >= 1 && data.userId.size() <= 128 &&
+             data.name is string && data.name.size() >= 1 && data.name.size() <= 120 &&
+             data.email is string && data.email.size() <= 200 &&
+             data.role is string && data.role in ['student', 'super_admin'] &&
+             data.selectedClass is int && data.selectedClass >= 5 && data.selectedClass <= 10 &&
+             data.selectedStream is string && data.selectedStream in ['NONE', 'SCIENCE', 'HUMANITIES', 'BUSINESS'] &&
+             isOptString(data, 'photoUrl', 500) &&
+             data.isActive is bool &&
+             data.accountDeletionRequested is bool &&
+             data.createdAt is timestamp &&
+             isValidTimestamp(data.updatedAt);
+    }
+
+    function isValidSchoolClass(data) {
+      return data.keys().hasAll(['classNumber', 'nameBn', 'nameEn', 'hasStreams', 'isActive', 'sortOrder', 'createdAt', 'updatedAt']) &&
+             data.keys().hasOnly(['classNumber', 'nameBn', 'nameEn', 'hasStreams', 'isActive', 'sortOrder', 'createdAt', 'updatedAt']) &&
+             data.classNumber is int && data.classNumber >= 1 && data.classNumber <= 12 &&
+             data.nameBn is string && data.nameBn.size() >= 1 && data.nameBn.size() <= 100 &&
+             data.nameEn is string && data.nameEn.size() >= 1 && data.nameEn.size() <= 100 &&
+             data.hasStreams is bool &&
+             data.isActive is bool &&
+             data.sortOrder is int && data.sortOrder >= 0 && data.sortOrder <= 1000 &&
+             data.createdAt is timestamp &&
+             isValidTimestamp(data.updatedAt);
+    }
+
+    function isValidAcademicStream(data) {
+      return data.keys().hasAll(['code', 'nameBn', 'nameEn', 'isActive', 'sortOrder', 'createdAt', 'updatedAt']) &&
+             data.keys().hasOnly(['code', 'nameBn', 'nameEn', 'isActive', 'sortOrder', 'createdAt', 'updatedAt']) &&
+             data.code is string && data.code in ['SCIENCE', 'HUMANITIES', 'BUSINESS'] &&
+             data.nameBn is string && data.nameBn.size() >= 1 && data.nameBn.size() <= 100 &&
+             data.nameEn is string && data.nameEn.size() >= 1 && data.nameEn.size() <= 100 &&
+             data.isActive is bool &&
+             data.sortOrder is int && data.sortOrder >= 0 && data.sortOrder <= 1000 &&
+             data.createdAt is timestamp &&
+             isValidTimestamp(data.updatedAt);
+    }
+
+    function isValidSubject(data) {
+      return data.keys().hasAll(['nameBn', 'nameEn', 'classNumber', 'stream', 'isActive', 'sortOrder', 'createdAt', 'updatedAt']) &&
+             data.keys().hasOnly(['nameBn', 'nameEn', 'classNumber', 'stream', 'isActive', 'sortOrder', 'createdAt', 'updatedAt']) &&
+             data.nameBn is string && data.nameBn.size() >= 1 && data.nameBn.size() <= 120 &&
+             data.nameEn is string && data.nameEn.size() <= 120 &&
+             data.classNumber is int && data.classNumber >= 1 && data.classNumber <= 12 &&
+             data.stream is string && data.stream in ['ALL', 'SCIENCE', 'HUMANITIES', 'BUSINESS'] &&
+             data.isActive is bool &&
+             data.sortOrder is int && data.sortOrder >= 0 && data.sortOrder <= 1000 &&
+             data.createdAt is timestamp &&
+             isValidTimestamp(data.updatedAt);
+    }
+
+    function isValidTextbook(data) {
+      return data.keys().hasAll(['titleBn', 'subjectId', 'subjectNameBn', 'classNumber', 'stream', 'academicYear', 'edition', 'language', 'pageCount', 'pdfUrl', 'isPremium', 'isPublished', 'allowDownload', 'isPopular', 'createdAt', 'updatedAt']) &&
+             data.keys().hasOnly(['titleBn', 'titleEn', 'subjectId', 'subjectNameBn', 'subjectNameEn', 'classNumber', 'stream', 'academicYear', 'edition', 'author', 'publisher', 'shortDescription', 'description', 'language', 'pageCount', 'coverUrl', 'pdfUrl', 'coverStoragePath', 'pdfStoragePath', 'coverFileName', 'coverFileSizeBytes', 'pdfFileName', 'pdfFileSizeBytes', 'isPremium', 'isPublished', 'allowDownload', 'isPopular', 'tableOfContents', 'createdAt', 'updatedAt']) &&
+             data.titleBn is string && data.titleBn.size() >= 1 && data.titleBn.size() <= 200 &&
+             isOptString(data, 'titleEn', 200) &&
+             data.subjectId is string && data.subjectId.size() >= 1 && data.subjectId.size() <= 128 &&
+             data.subjectNameBn is string && data.subjectNameBn.size() >= 1 && data.subjectNameBn.size() <= 120 &&
+             isOptString(data, 'subjectNameEn', 120) &&
+             data.classNumber is int && data.classNumber >= 1 && data.classNumber <= 12 &&
+             data.stream is string && data.stream in ['ALL', 'SCIENCE', 'HUMANITIES', 'BUSINESS'] &&
+             data.academicYear is string && data.academicYear.size() >= 1 && data.academicYear.size() <= 20 &&
+             data.edition is string && data.edition.size() >= 1 && data.edition.size() <= 80 &&
+             isOptString(data, 'author', 200) &&
+             isOptString(data, 'publisher', 200) &&
+             isOptString(data, 'shortDescription', 600) &&
+             isOptString(data, 'description', 15000) &&
+             data.language is string && data.language in ['BN', 'EN'] &&
+             data.pageCount is int && data.pageCount >= 1 && data.pageCount <= 3000 &&
+             isOptString(data, 'coverUrl', 1000) &&
+             data.pdfUrl is string && data.pdfUrl.size() >= 1 && data.pdfUrl.size() <= 1000 &&
+             isOptString(data, 'coverStoragePath', 500) &&
+             isOptString(data, 'pdfStoragePath', 500) &&
+             isOptString(data, 'coverFileName', 255) &&
+             isOptString(data, 'pdfFileName', 255) &&
+             (!('coverFileSizeBytes' in data) || (data.coverFileSizeBytes is int && data.coverFileSizeBytes >= 0 && data.coverFileSizeBytes <= 20000000)) &&
+             (!('pdfFileSizeBytes' in data) || (data.pdfFileSizeBytes is int && data.pdfFileSizeBytes >= 0 && data.pdfFileSizeBytes <= 300000000)) &&
+             // Direct Storage upload guard: if pdfStoragePath is populated and book is published, coverStoragePath must also be populated
+             (!('pdfStoragePath' in data) || data.pdfStoragePath.size() == 0 || !data.isPublished || ('coverStoragePath' in data && data.coverStoragePath is string && data.coverStoragePath.size() >= 1)) &&
+             data.isPremium is bool &&
+             data.isPublished is bool &&
+             data.allowDownload is bool &&
+             data.isPopular is bool &&
+             (!('tableOfContents' in data) || (data.tableOfContents is list && data.tableOfContents.size() <= 60 && (data.tableOfContents.size() == 0 || (data.tableOfContents[0] is string && data.tableOfContents[0].size() <= 200)))) &&
+             data.createdAt is timestamp &&
+             isValidTimestamp(data.updatedAt);
+    }
+
+    function isValidGuideNote(data) {
+      return data.keys().hasAll(['titleBn', 'classNumber', 'stream', 'subjectId', 'subjectNameBn', 'chapter', 'guideType', 'isPremium', 'isPublished', 'allowDownload', 'createdAt', 'updatedAt']) &&
+             data.keys().hasOnly(['titleBn', 'titleEn', 'classNumber', 'stream', 'subjectId', 'subjectNameBn', 'subjectNameEn', 'chapter', 'guideType', 'academicYear', 'language', 'author', 'publisher', 'edition', 'shortDescription', 'summaryContent', 'tableOfContents', 'pdfUrl', 'coverUrl', 'coverStoragePath', 'pdfStoragePath', 'coverFileName', 'coverFileSizeBytes', 'pdfFileName', 'pdfFileSizeBytes', 'pageCount', 'isPremium', 'isPublished', 'allowDownload', 'createdAt', 'updatedAt']) &&
+             data.titleBn is string && data.titleBn.size() >= 1 && data.titleBn.size() <= 200 &&
+             isOptString(data, 'titleEn', 200) &&
+             data.classNumber is int && data.classNumber >= 1 && data.classNumber <= 12 &&
+             data.stream is string && data.stream in ['ALL', 'SCIENCE', 'HUMANITIES', 'BUSINESS'] &&
+             data.subjectId is string && data.subjectId.size() >= 1 && data.subjectId.size() <= 128 &&
+             data.subjectNameBn is string && data.subjectNameBn.size() >= 1 && data.subjectNameBn.size() <= 120 &&
+             isOptString(data, 'subjectNameEn', 120) &&
+             data.chapter is string && data.chapter.size() >= 1 && data.chapter.size() <= 150 &&
+             data.guideType is string && data.guideType in ['COMPLETE_GUIDE', 'FULL_GUIDE', 'CHAPTER_NOTE', 'SHORT_QUESTION', 'CREATIVE_QUESTION', 'MCQ', 'EXPLANATION', 'PRACTICE', 'IMPORTANT_QUESTION', 'SUGGESTION'] &&
+             isOptString(data, 'academicYear', 20) &&
+             (!('language' in data) || (data.language is string && data.language in ['BN', 'EN'])) &&
+             isOptString(data, 'author', 200) &&
+             isOptString(data, 'publisher', 200) &&
+             isOptString(data, 'edition', 80) &&
+             isOptString(data, 'shortDescription', 600) &&
+             isOptString(data, 'summaryContent', 20000) &&
+             (!('tableOfContents' in data) || (data.tableOfContents is list && data.tableOfContents.size() <= 60 && (data.tableOfContents.size() == 0 || (data.tableOfContents[0] is string && data.tableOfContents[0].size() <= 200)))) &&
+             isOptString(data, 'pdfUrl', 1000) &&
+             isOptString(data, 'coverUrl', 1000) &&
+             isOptString(data, 'coverStoragePath', 500) &&
+             isOptString(data, 'pdfStoragePath', 500) &&
+             isOptString(data, 'coverFileName', 255) &&
+             isOptString(data, 'pdfFileName', 255) &&
+             (!('coverFileSizeBytes' in data) || (data.coverFileSizeBytes is int && data.coverFileSizeBytes >= 0 && data.coverFileSizeBytes <= 20000000)) &&
+             (!('pdfFileSizeBytes' in data) || (data.pdfFileSizeBytes is int && data.pdfFileSizeBytes >= 0 && data.pdfFileSizeBytes <= 300000000)) &&
+             (!('pdfStoragePath' in data) || data.pdfStoragePath.size() == 0 || !data.isPublished || ('coverStoragePath' in data && data.coverStoragePath is string && data.coverStoragePath.size() >= 1)) &&
+             (!('pageCount' in data) || (data.pageCount is int && data.pageCount >= 0 && data.pageCount <= 3000)) &&
+             data.isPremium is bool &&
+             data.isPublished is bool &&
+             data.allowDownload is bool &&
+             data.createdAt is timestamp &&
+             isValidTimestamp(data.updatedAt);
+    }
+
+    function isValidGkItem(data) {
+      return data.keys().hasAll(['category', 'questionBn', 'answerBn', 'isPublished', 'isDemo', 'createdAt', 'updatedAt']) &&
+             data.keys().hasOnly(['category', 'questionBn', 'questionEn', 'answerBn', 'answerEn', 'explanationBn', 'isPublished', 'isDemo', 'createdAt', 'updatedAt']) &&
+             data.category is string && data.category in ['BANGLADESH', 'INTERNATIONAL', 'SCIENCE_TECH', 'HISTORY', 'GEOGRAPHY', 'SPORTS', 'CURRENT_AFFAIRS'] &&
+             data.questionBn is string && data.questionBn.size() >= 1 && data.questionBn.size() <= 500 &&
+             isOptString(data, 'questionEn', 500) &&
+             data.answerBn is string && data.answerBn.size() >= 1 && data.answerBn.size() <= 500 &&
+             isOptString(data, 'answerEn', 500) &&
+             isOptString(data, 'explanationBn', 2000) &&
+             data.isPublished is bool &&
+             data.isDemo is bool &&
+             data.createdAt is timestamp &&
+             isValidTimestamp(data.updatedAt);
+    }
+
+    function isValidExamTest(data) {
+      return data.keys().hasAll(['titleBn', 'examType', 'classNumber', 'stream', 'subjectNameBn', 'durationMinutes', 'totalMarks', 'questionCount', 'questions', 'isPublished', 'isDemo', 'createdAt', 'updatedAt']) &&
+             data.keys().hasOnly(['titleBn', 'titleEn', 'examType', 'classNumber', 'stream', 'subjectNameBn', 'chapter', 'durationMinutes', 'totalMarks', 'questionCount', 'questions', 'isPublished', 'isDemo', 'createdAt', 'updatedAt']) &&
+             data.titleBn is string && data.titleBn.size() >= 1 && data.titleBn.size() <= 200 &&
+             isOptString(data, 'titleEn', 200) &&
+             data.examType is string && data.examType in ['SUBJECT', 'CHAPTER', 'MODEL'] &&
+             data.classNumber is int && data.classNumber >= 1 && data.classNumber <= 12 &&
+             data.stream is string && data.stream in ['ALL', 'SCIENCE', 'HUMANITIES', 'BUSINESS'] &&
+             data.subjectNameBn is string && data.subjectNameBn.size() >= 1 && data.subjectNameBn.size() <= 120 &&
+             isOptString(data, 'chapter', 150) &&
+             data.durationMinutes is int && data.durationMinutes >= 1 && data.durationMinutes <= 240 &&
+             data.totalMarks is int && data.totalMarks >= 1 && data.totalMarks <= 500 &&
+             data.questionCount is int && data.questionCount >= 1 && data.questionCount <= 100 &&
+             data.questions is list && data.questions.size() >= 1 && data.questions.size() <= 100 &&
+             data.questions[0] is map &&
+             data.isPublished is bool &&
+             data.isDemo is bool &&
+             data.createdAt is timestamp &&
+             isValidTimestamp(data.updatedAt);
+    }
+
+    function isValidExamAnswerKey(data) {
+      return data.keys().hasAll(['examId', 'correctIndices', 'explanations', 'isPublished', 'updatedAt']) &&
+             data.keys().hasOnly(['examId', 'correctIndices', 'explanations', 'isPublished', 'updatedAt']) &&
+             data.examId is string && data.examId.size() >= 1 && data.examId.size() <= 128 &&
+             data.correctIndices is list && data.correctIndices.size() >= 1 && data.correctIndices.size() <= 100 &&
+             data.correctIndices[0] is int &&
+             data.explanations is list && data.explanations.size() <= 100 &&
+             (data.explanations.size() == 0 || (data.explanations[0] is string && data.explanations[0].size() <= 1000)) &&
+             data.isPublished is bool &&
+             isValidTimestamp(data.updatedAt);
+    }
+
+    function isValidExamAttempt(data) {
+      return data.keys().hasAll(['userId', 'examId', 'examTitleBn', 'selectedAnswers', 'score', 'totalMarks', 'correctCount', 'totalQuestions', 'status', 'createdAt', 'updatedAt']) &&
+             data.keys().hasOnly(['userId', 'examId', 'examTitleBn', 'selectedAnswers', 'score', 'totalMarks', 'correctCount', 'totalQuestions', 'status', 'createdAt', 'updatedAt']) &&
+             data.userId is string && data.userId.size() >= 1 && data.userId.size() <= 128 &&
+             data.examId is string && data.examId.size() >= 1 && data.examId.size() <= 128 &&
+             data.examTitleBn is string && data.examTitleBn.size() >= 1 && data.examTitleBn.size() <= 200 &&
+             data.selectedAnswers is list && data.selectedAnswers.size() >= 1 && data.selectedAnswers.size() <= 100 &&
+             data.selectedAnswers[0] is int &&
+             data.score is int && data.score >= 0 && data.score <= 500 &&
+             data.totalMarks is int && data.totalMarks >= 1 && data.totalMarks <= 500 &&
+             data.correctCount is int && data.correctCount >= 0 && data.correctCount <= 100 &&
+             data.totalQuestions is int && data.totalQuestions >= 1 && data.totalQuestions <= 100 &&
+             data.status is string && data.status in ['SUBMITTED', 'GRADED'] &&
+             data.createdAt is timestamp &&
+             isValidTimestamp(data.updatedAt);
+    }
+
+    function isValidSubscriptionPlan(data) {
+      return data.keys().hasAll(['nameBn', 'classNumber', 'stream', 'durationMonths', 'priceBdt', 'isActive', 'createdAt', 'updatedAt']) &&
+             data.keys().hasOnly(['nameBn', 'nameEn', 'descriptionBn', 'benefits', 'classNumber', 'stream', 'durationMonths', 'priceBdt', 'isActive', 'createdAt', 'updatedAt']) &&
+             data.nameBn is string && data.nameBn.size() >= 1 && data.nameBn.size() <= 120 &&
+             isOptString(data, 'nameEn', 120) &&
+             isOptString(data, 'descriptionBn', 500) &&
+             (!('benefits' in data) || (data.benefits is list && data.benefits.size() <= 15 && (data.benefits.size() == 0 || (data.benefits[0] is string && data.benefits[0].size() <= 200)))) &&
+             data.classNumber is int && data.classNumber >= 5 && data.classNumber <= 10 &&
+             data.stream is string && data.stream in ['ALL', 'SCIENCE', 'HUMANITIES', 'BUSINESS'] &&
+             data.durationMonths is int && data.durationMonths in [1, 3, 6, 12] &&
+             data.priceBdt is int && data.priceBdt >= 1 && data.priceBdt <= 100000 &&
+             data.isActive is bool &&
+             data.createdAt is timestamp &&
+             isValidTimestamp(data.updatedAt);
+    }
+
+    function isValidPaymentMethod(data) {
+      return data.keys().hasAll(['methodType', 'methodName', 'accountNumber', 'accountType', 'transactionType', 'isActive', 'displayOrder', 'createdAt', 'updatedAt']) &&
+             data.keys().hasOnly(['methodType', 'methodName', 'accountNumber', 'accountHolderName', 'accountType', 'transactionType', 'bankName', 'branchName', 'routingNumber', 'paymentInstructions', 'isActive', 'displayOrder', 'createdAt', 'updatedAt']) &&
+             data.methodType is string && data.methodType in ['BKASH', 'NAGAD', 'ROCKET', 'BANK_TRANSFER'] &&
+             data.methodName is string && data.methodName.size() >= 2 && data.methodName.size() <= 60 &&
+             data.accountNumber is string && data.accountNumber.size() >= 4 && data.accountNumber.size() <= 60 &&
+             isOptString(data, 'accountHolderName', 120) &&
+             data.accountType is string && data.accountType in ['Personal', 'Agent', 'Merchant', 'Bank Account'] &&
+             data.transactionType is string && data.transactionType in ['Send Money', 'Cash Out', 'Payment', 'Bank Transfer'] &&
+             (
+               (data.methodType == 'BKASH' && data.transactionType in ['Send Money', 'Payment']) ||
+               (data.methodType == 'NAGAD' && data.transactionType in ['Send Money', 'Cash Out', 'Payment']) ||
+               (data.methodType == 'ROCKET' && data.transactionType in ['Send Money', 'Cash Out', 'Payment']) ||
+               (data.methodType == 'BANK_TRANSFER' && data.transactionType == 'Bank Transfer' &&
+                'bankName' in data && data.bankName is string && data.bankName.size() >= 2 &&
+                'accountHolderName' in data && data.accountHolderName is string && data.accountHolderName.size() >= 2)
+             ) &&
+             isOptString(data, 'bankName', 150) &&
+             isOptString(data, 'branchName', 150) &&
+             isOptString(data, 'routingNumber', 50) &&
+             isOptString(data, 'paymentInstructions', 1000) &&
+             data.isActive is bool &&
+             data.displayOrder is int && data.displayOrder >= 0 && data.displayOrder <= 1000 &&
+             data.createdAt is timestamp &&
+             isValidTimestamp(data.updatedAt);
+    }
+
+    function isValidUsedTransactionLock(data) {
+      return data.keys().hasAll(['normalizedTrxId', 'transactionReference', 'requestId', 'userId', 'status', 'createdAt', 'updatedAt']) &&
+             data.keys().hasOnly(['normalizedTrxId', 'transactionReference', 'requestId', 'userId', 'status', 'createdAt', 'updatedAt']) &&
+             data.normalizedTrxId is string && data.normalizedTrxId.size() >= 8 && data.normalizedTrxId.size() <= 110 &&
+             data.normalizedTrxId.matches('^trx_[A-Z0-9_\\-]+$') &&
+             data.transactionReference is string && data.transactionReference.size() >= 4 && data.transactionReference.size() <= 100 &&
+             data.requestId is string && data.requestId.size() >= 1 && data.requestId.size() <= 128 &&
+             data.userId is string && data.userId.size() >= 1 && data.userId.size() <= 128 &&
+             data.status is string && data.status in ['RESERVED', 'APPROVED'] &&
+             data.createdAt is timestamp &&
+             isValidTimestamp(data.updatedAt);
+    }
+
+    function isCanonicalRefPriceMatch(classNum, months, amount) {
+      return (classNum < 9 && (
+               (months == 1 && amount == 20) ||
+               (months == 3 && amount == 50) ||
+               (months == 6 && amount == 60) ||
+               (months == 12 && amount == 100)
+             )) ||
+             (classNum >= 9 && (
+               (months == 1 && amount == 30) ||
+               (months == 3 && amount == 70) ||
+               (months == 6 && amount == 90) ||
+               (months == 12 && amount == 150)
+             ));
+    }
+
+    function isPlanPriceVerified(data) {
+      return (
+        exists(/databases/$(database)/documents/subscription_plans/$(data.planId)) &&
+        get(/databases/$(database)/documents/subscription_plans/$(data.planId)).data.isActive == true &&
+        get(/databases/$(database)/documents/subscription_plans/$(data.planId)).data.priceBdt == data.amountBdt &&
+        get(/databases/$(database)/documents/subscription_plans/$(data.planId)).data.classNumber == data.classNumber &&
+        get(/databases/$(database)/documents/subscription_plans/$(data.planId)).data.durationMonths == data.durationMonths
+      ) || (
+        !exists(/databases/$(database)/documents/subscription_plans/$(data.planId)) &&
+        data.planId.matches('^ref_c([5-9]|10)_(all|science|humanities|business)_(1|3|6|12)m$') &&
+        isCanonicalRefPriceMatch(data.classNumber, data.durationMonths, data.amountBdt)
+      );
+    }
+
+    function isPaymentMethodSnapshotVerified(data) {
+      return !('paymentMethodId' in data) ||
+             data.paymentMethodId == '' ||
+             (
+               exists(/databases/$(database)/documents/payment_methods/$(data.paymentMethodId)) &&
+               get(/databases/$(database)/documents/payment_methods/$(data.paymentMethodId)).data.isActive == true &&
+               'receiverNumber' in data &&
+               data.receiverNumber == get(/databases/$(database)/documents/payment_methods/$(data.paymentMethodId)).data.accountNumber &&
+               'transactionType' in data &&
+               data.transactionType == get(/databases/$(database)/documents/payment_methods/$(data.paymentMethodId)).data.transactionType
+             );
+    }
+
+    function isValidSubscriptionRequest(data) {
+      return data.keys().hasAll(['userId', 'userName', 'planId', 'planNameBn', 'classNumber', 'stream', 'durationMonths', 'amountBdt', 'paymentMethod', 'transactionReference', 'normalizedTrxId', 'status', 'createdAt', 'updatedAt']) &&
+             data.keys().hasOnly(['userId', 'userName', 'userEmail', 'planId', 'planNameBn', 'classNumber', 'stream', 'durationMonths', 'amountBdt', 'paymentMethodId', 'paymentMethod', 'transactionType', 'receiverNumber', 'accountHolderName', 'transactionReference', 'normalizedTrxId', 'senderNumber', 'status', 'adminNote', 'rejectionReason', 'verifiedBy', 'verifiedAt', 'createdAt', 'updatedAt']) &&
+             data.userId is string && data.userId.size() >= 1 && data.userId.size() <= 128 &&
+             data.userName is string && data.userName.size() >= 1 && data.userName.size() <= 120 &&
+             isOptString(data, 'userEmail', 200) &&
+             data.planId is string && data.planId.size() >= 1 && data.planId.size() <= 128 &&
+             data.planNameBn is string && data.planNameBn.size() >= 1 && data.planNameBn.size() <= 120 &&
+             data.classNumber is int && data.classNumber >= 5 && data.classNumber <= 10 &&
+             data.stream is string && data.stream in ['ALL', 'SCIENCE', 'HUMANITIES', 'BUSINESS'] &&
+             data.durationMonths is int && data.durationMonths in [1, 3, 6, 12] &&
+             data.amountBdt is int && data.amountBdt >= 1 && data.amountBdt <= 100000 &&
+             isOptString(data, 'paymentMethodId', 128) &&
+             data.paymentMethod is string && data.paymentMethod.size() >= 1 && data.paymentMethod.size() <= 60 &&
+             (!('transactionType' in data) || data.transactionType == '' || (data.transactionType is string && data.transactionType in ['Send Money', 'Cash Out', 'Payment', 'Bank Transfer'])) &&
+             isOptString(data, 'receiverNumber', 60) &&
+             isOptString(data, 'accountHolderName', 150) &&
+             data.transactionReference is string && data.transactionReference.size() >= 4 && data.transactionReference.size() <= 100 &&
+             data.normalizedTrxId is string && data.normalizedTrxId.size() >= 8 && data.normalizedTrxId.size() <= 110 &&
+             data.normalizedTrxId.matches('^trx_[A-Z0-9_\\-]+$') &&
+             isOptString(data, 'senderNumber', 60) &&
+             data.status is string && data.status in ['PENDING', 'APPROVED', 'REJECTED'] &&
+             isOptString(data, 'adminNote', 500) &&
+             isOptString(data, 'rejectionReason', 500) &&
+             isOptString(data, 'verifiedBy', 128) &&
+             (!('verifiedAt' in data) || data.verifiedAt == null || isValidTimestamp(data.verifiedAt)) &&
+             data.createdAt is timestamp &&
+             isValidTimestamp(data.updatedAt);
+    }
+
+    function isValidSubscription(data) {
+      return data.keys().hasAll(['userId', 'planId', 'planNameBn', 'classNumber', 'stream', 'durationMonths', 'status', 'startDate', 'expiryDate', 'approvedByUid', 'createdAt', 'updatedAt']) &&
+             data.keys().hasOnly(['userId', 'planId', 'planNameBn', 'classNumber', 'stream', 'durationMonths', 'amountBdt', 'paymentMethod', 'transactionReference', 'status', 'startDate', 'expiryDate', 'approvedByUid', 'requestId', 'createdAt', 'updatedAt']) &&
+             data.userId is string && data.userId.size() >= 1 && data.userId.size() <= 128 &&
+             data.planId is string && data.planId.size() >= 1 && data.planId.size() <= 128 &&
+             data.planNameBn is string && data.planNameBn.size() >= 1 && data.planNameBn.size() <= 120 &&
+             data.classNumber is int && data.classNumber >= 5 && data.classNumber <= 10 &&
+             data.stream is string && data.stream in ['ALL', 'SCIENCE', 'HUMANITIES', 'BUSINESS'] &&
+             data.durationMonths is int && data.durationMonths in [1, 3, 6, 12] &&
+             (!('amountBdt' in data) || (data.amountBdt is int && data.amountBdt >= 0 && data.amountBdt <= 100000)) &&
+             isOptString(data, 'paymentMethod', 60) &&
+             isOptString(data, 'transactionReference', 100) &&
+             data.status is string && data.status in ['ACTIVE', 'EXPIRED', 'REVOKED'] &&
+             data.startDate is timestamp &&
+             data.expiryDate is timestamp &&
+             data.expiryDate > data.startDate &&
+             data.approvedByUid is string && data.approvedByUid == 'yyskhmPvvfeNl572FnVhZgYAaQx2' &&
+             isOptString(data, 'requestId', 128) &&
+             data.createdAt is timestamp &&
+             isValidTimestamp(data.updatedAt);
+    }
+
+    function isValidAppNotification(data) {
+      return data.keys().hasAll(['recipientId', 'senderUid', 'title', 'message', 'notificationType', 'isRead', 'createdAt', 'updatedAt']) &&
+             data.keys().hasOnly(['recipientId', 'senderUid', 'title', 'message', 'notificationType', 'relatedPaymentRequestId', 'studentName', 'planName', 'amountBdt', 'paymentMethod', 'transactionId', 'isRead', 'createdAt', 'updatedAt']) &&
+             data.recipientId is string && data.recipientId.size() >= 1 && data.recipientId.size() <= 128 &&
+             data.senderUid is string && data.senderUid.size() >= 1 && data.senderUid.size() <= 128 &&
+             data.title is string && data.title.size() >= 1 && data.title.size() <= 200 &&
+             data.message is string && data.message.size() >= 1 && data.message.size() <= 2000 &&
+             data.notificationType is string && data.notificationType in ['PAYMENT_REQUEST_SUBMITTED', 'PAYMENT_APPROVED', 'PAYMENT_REJECTED', 'SYSTEM'] &&
+             isOptString(data, 'relatedPaymentRequestId', 128) &&
+             isOptString(data, 'studentName', 120) &&
+             isOptString(data, 'planName', 120) &&
+             (!('amountBdt' in data) || (data.amountBdt is int && data.amountBdt >= 0 && data.amountBdt <= 100000)) &&
+             isOptString(data, 'paymentMethod', 60) &&
+             isOptString(data, 'transactionId', 100) &&
+             data.isRead is bool &&
+             data.createdAt is timestamp &&
+             isValidTimestamp(data.updatedAt);
+    }
+
+    function isValidBookmark(data) {
+      return data.keys().hasAll(['userId', 'bookmarkType', 'targetId', 'titleBn', 'pageNumber', 'isPremium', 'createdAt', 'updatedAt']) &&
+             data.keys().hasOnly(['userId', 'bookmarkType', 'targetId', 'titleBn', 'subtitleBn', 'classNumber', 'pageNumber', 'coverUrl', 'pdfUrl', 'isPremium', 'createdAt', 'updatedAt']) &&
+             data.userId is string && data.userId.size() >= 1 && data.userId.size() <= 128 &&
+             data.bookmarkType is string && data.bookmarkType in ['BOOK', 'PAGE', 'GUIDE', 'GK'] &&
+             data.targetId is string && data.targetId.size() >= 1 && data.targetId.size() <= 128 &&
+             data.titleBn is string && data.titleBn.size() >= 1 && data.titleBn.size() <= 200 &&
+             isOptString(data, 'subtitleBn', 200) &&
+             (!('classNumber' in data) || (data.classNumber is int && data.classNumber >= 0 && data.classNumber <= 12)) &&
+             data.pageNumber is int && data.pageNumber >= 0 && data.pageNumber <= 5000 &&
+             isOptString(data, 'coverUrl', 1000) &&
+             isOptString(data, 'pdfUrl', 1000) &&
+             data.isPremium is bool &&
+             data.createdAt is timestamp &&
+             isValidTimestamp(data.updatedAt);
+    }
+
+    function isValidReadingProgress(data) {
+      return data.keys().hasAll(['userId', 'contentId', 'contentType', 'titleBn', 'classNumber', 'stream', 'isPremium', 'lastPage', 'totalPages', 'progressPercent', 'createdAt', 'updatedAt']) &&
+             data.keys().hasOnly(['userId', 'contentId', 'contentType', 'titleBn', 'subjectNameBn', 'classNumber', 'stream', 'coverUrl', 'pdfUrl', 'isPremium', 'lastPage', 'totalPages', 'progressPercent', 'createdAt', 'updatedAt']) &&
+             data.userId is string && data.userId.size() >= 1 && data.userId.size() <= 128 &&
+             data.contentId is string && data.contentId.size() >= 1 && data.contentId.size() <= 128 &&
+             data.contentType is string && data.contentType in ['BOOK', 'GUIDE'] &&
+             data.titleBn is string && data.titleBn.size() >= 1 && data.titleBn.size() <= 200 &&
+             isOptString(data, 'subjectNameBn', 120) &&
+             data.classNumber is int && data.classNumber >= 1 && data.classNumber <= 12 &&
+             data.stream is string && data.stream in ['ALL', 'SCIENCE', 'HUMANITIES', 'BUSINESS'] &&
+             isOptString(data, 'coverUrl', 1000) &&
+             isOptString(data, 'pdfUrl', 1000) &&
+             data.isPremium is bool &&
+             data.lastPage is int && data.lastPage >= 1 && data.lastPage <= 5000 &&
+             data.totalPages is int && data.totalPages >= 1 && data.totalPages <= 5000 &&
+             data.progressPercent is int && data.progressPercent >= 0 && data.progressPercent <= 100 &&
+             data.createdAt is timestamp &&
+             isValidTimestamp(data.updatedAt);
+    }
+
+    function isValidUserNote(data) {
+      return data.keys().hasAll(['userId', 'title', 'content', 'colorIndex', 'isPinned', 'createdAt', 'updatedAt']) &&
+             data.keys().hasOnly(['userId', 'title', 'content', 'subjectTag', 'colorIndex', 'isPinned', 'createdAt', 'updatedAt']) &&
+             data.userId is string && data.userId.size() >= 1 && data.userId.size() <= 128 &&
+             data.title is string && data.title.size() >= 1 && data.title.size() <= 200 &&
+             data.content is string && data.content.size() >= 1 && data.content.size() <= 20000 &&
+             isOptString(data, 'subjectTag', 80) &&
+             data.colorIndex is int && data.colorIndex >= 0 && data.colorIndex <= 5 &&
+             data.isPinned is bool &&
+             data.createdAt is timestamp &&
+             isValidTimestamp(data.updatedAt);
+    }
+
+    function isValidNotice(data) {
+      return data.keys().hasAll(['titleBn', 'bodyBn', 'category', 'isPublished', 'isImportant', 'createdAt', 'updatedAt']) &&
+             data.keys().hasOnly(['titleBn', 'bodyBn', 'category', 'isPublished', 'isImportant', 'createdAt', 'updatedAt']) &&
+             data.titleBn is string && data.titleBn.size() >= 1 && data.titleBn.size() <= 200 &&
+             data.bodyBn is string && data.bodyBn.size() >= 1 && data.bodyBn.size() <= 5000 &&
+             data.category is string && data.category.size() >= 1 && data.category.size() <= 60 &&
+             data.isPublished is bool &&
+             data.isImportant is bool &&
+             data.createdAt is timestamp &&
+             isValidTimestamp(data.updatedAt);
+    }
+
+    function isValidAppSettings(data) {
+      return data.keys().hasAll(['downloadsEnabled', 'allowTextbookDownload', 'allowGuideDownload', 'allowNoteDownload', 'defaultTheme', 'defaultLanguage', 'updatedAt']) &&
+             data.keys().hasOnly(['downloadsEnabled', 'allowTextbookDownload', 'allowGuideDownload', 'allowNoteDownload', 'defaultTheme', 'defaultLanguage', 'announcementBannerBn', 'contactEmail', 'contactPhone', 'websiteUrl', 'privacyPolicyBn', 'termsAndConditionsBn', 'updatedAt']) &&
+             data.downloadsEnabled is bool &&
+             data.allowTextbookDownload is bool &&
+             data.allowGuideDownload is bool &&
+             data.allowNoteDownload is bool &&
+             data.defaultTheme is string && data.defaultTheme in ['SYSTEM', 'LIGHT', 'DARK'] &&
+             data.defaultLanguage is string && data.defaultLanguage in ['BN', 'EN'] &&
+             isOptString(data, 'announcementBannerBn', 500) &&
+             isOptString(data, 'contactEmail', 200) &&
+             isOptString(data, 'contactPhone', 60) &&
+             isOptString(data, 'websiteUrl', 300) &&
+             isOptString(data, 'privacyPolicyBn', 15000) &&
+             isOptString(data, 'termsAndConditionsBn', 15000) &&
+             isValidTimestamp(data.updatedAt);
+    }
+
+    // =========================================================================
+    // GRANULAR COLLECTION MATCH BLOCKS (SEPARATE GET, LIST, CREATE, UPDATE, DELETE)
+    // =========================================================================
+
+    // 1. User Profiles (PII Isolated to Owner or Super Admin; Role Immutable for Students)
+    match /users/{userId} {
+      allow get: if isValidId(userId) && (isOwner(userId) || isSuperAdmin());
+      allow list: if isSuperAdmin();
+
+      allow create: if isValidId(userId) &&
+                       isValidUserProfile(incoming()) &&
+                       isValidTimestamp(incoming().createdAt) &&
+                       (
+                         (isOwner(userId) &&
+                          incoming().userId == userId &&
+                          incoming().role == 'student' &&
+                          incoming().isActive == true &&
+                          incoming().accountDeletionRequested == false) ||
+                         (isSuperAdmin() && incoming().userId == userId)
+                       );
+
+      allow update: if isValidId(userId) &&
+                       isValidUserProfile(incoming()) &&
+                       incoming().userId == existing().userId &&
+                       incoming().createdAt == existing().createdAt &&
+                       (
+                         (isOwner(userId) &&
+                          incoming().role == existing().role &&
+                          incoming().isActive == existing().isActive &&
+                          incoming().email == existing().email &&
+                          incoming().diff(existing()).affectedKeys().hasOnly(['name', 'selectedClass', 'selectedStream', 'photoUrl', 'accountDeletionRequested', 'updatedAt'])) ||
+                         (isSuperAdmin() &&
+                          (incoming().role == existing().role || userId == 'yyskhmPvvfeNl572FnVhZgYAaQx2') &&
+                          incoming().diff(existing()).affectedKeys().hasOnly(['name', 'role', 'selectedClass', 'selectedStream', 'photoUrl', 'isActive', 'accountDeletionRequested', 'updatedAt']))
+                       );
+
+      allow delete: if isValidId(userId) && isSuperAdmin();
+    }
+
+    // 2. Classes (Super Admin CRUD; Students read active classes only)
+    match /classes/{classId} {
+      allow get: if isValidId(classId) && (isSuperAdmin() || (isSignedIn() && resource != null && existing().isActive == true));
+      allow list: if isSuperAdmin() || (isSignedIn() && existing().isActive == true);
+      allow create: if isValidId(classId) && isSuperAdmin() && isValidSchoolClass(incoming()) && isValidTimestamp(incoming().createdAt);
+      allow update: if isValidId(classId) && isSuperAdmin() && isValidSchoolClass(incoming()) && incoming().createdAt == existing().createdAt;
+      allow delete: if isValidId(classId) && isSuperAdmin();
+    }
+
+    // 3. Academic Streams / Categories for Class 9-10 (Super Admin CRUD; Students read active streams)
+    match /streams/{streamId} {
+      allow get: if isValidId(streamId) && (isSuperAdmin() || (isSignedIn() && resource != null && existing().isActive == true));
+      allow list: if isSuperAdmin() || (isSignedIn() && existing().isActive == true);
+      allow create: if isValidId(streamId) && isSuperAdmin() && isValidAcademicStream(incoming()) && isValidTimestamp(incoming().createdAt);
+      allow update: if isValidId(streamId) && isSuperAdmin() && isValidAcademicStream(incoming()) && incoming().createdAt == existing().createdAt;
+      allow delete: if isValidId(streamId) && isSuperAdmin();
+    }
+
+    // 4. Subjects / Subject Categories (Super Admin CRUD; Students read active subjects)
+    match /subjects/{subjectId} {
+      allow get: if isValidId(subjectId) && (isSuperAdmin() || (isSignedIn() && resource != null && existing().isActive == true));
+      allow list: if isSuperAdmin() || (isSignedIn() && existing().isActive == true);
+      allow create: if isValidId(subjectId) && isSuperAdmin() && isValidSubject(incoming()) && isValidTimestamp(incoming().createdAt);
+      allow update: if isValidId(subjectId) && isSuperAdmin() && isValidSubject(incoming()) && incoming().createdAt == existing().createdAt;
+      allow delete: if isValidId(subjectId) && isSuperAdmin();
+    }
+
+    // 5. Original Textbooks (Super Admin CRUD; Students read published books)
+    match /books/{bookId} {
+      allow get: if isValidId(bookId) && (isSuperAdmin() || (isSignedIn() && resource != null && existing().isPublished == true));
+      allow list: if isSuperAdmin() || (isSignedIn() && existing().isPublished == true);
+      allow create: if isValidId(bookId) && isSuperAdmin() && isValidTextbook(incoming()) && isValidTimestamp(incoming().createdAt);
+      allow update: if isValidId(bookId) && isSuperAdmin() && isValidTextbook(incoming()) && incoming().createdAt == existing().createdAt;
+      allow delete: if isValidId(bookId) && isSuperAdmin();
+    }
+
+    // 6. Guides & Chapter Notes Library (Super Admin CRUD; Students read published guides)
+    match /guides/{guideId} {
+      allow get: if isValidId(guideId) && (isSuperAdmin() || (isSignedIn() && resource != null && existing().isPublished == true));
+      allow list: if isSuperAdmin() || (isSignedIn() && existing().isPublished == true);
+      allow create: if isValidId(guideId) && isSuperAdmin() && isValidGuideNote(incoming()) && isValidTimestamp(incoming().createdAt);
+      allow update: if isValidId(guideId) && isSuperAdmin() && isValidGuideNote(incoming()) && incoming().createdAt == existing().createdAt;
+      allow delete: if isValidId(guideId) && isSuperAdmin();
+    }
+
+    // 7. General Knowledge Q&A Categories (Super Admin CRUD; Students read published GK)
+    match /general_knowledge/{gkId} {
+      allow get: if isValidId(gkId) && (isSuperAdmin() || (isSignedIn() && resource != null && existing().isPublished == true));
+      allow list: if isSuperAdmin() || (isSignedIn() && existing().isPublished == true);
+      allow create: if isValidId(gkId) && isSuperAdmin() && isValidGkItem(incoming()) && isValidTimestamp(incoming().createdAt);
+      allow update: if isValidId(gkId) && isSuperAdmin() && isValidGkItem(incoming()) && incoming().createdAt == existing().createdAt;
+      allow delete: if isValidId(gkId) && isSuperAdmin();
+    }
+
+    // 8. MCQ Exam Preparation Tests (Questions without answer keys)
+    match /exam_preparation/{examId} {
+      allow get: if isValidId(examId) && (isSuperAdmin() || (isSignedIn() && resource != null && existing().isPublished == true));
+      allow list: if isSuperAdmin() || (isSignedIn() && existing().isPublished == true);
+      allow create: if isValidId(examId) && isSuperAdmin() && isValidExamTest(incoming()) && isValidTimestamp(incoming().createdAt);
+      allow update: if isValidId(examId) && isSuperAdmin() && isValidExamTest(incoming()) && incoming().createdAt == existing().createdAt;
+      allow delete: if isValidId(examId) && isSuperAdmin();
+    }
+
+    // 9. Protected MCQ Answer Keys (Hidden before student submission; Super Admin CRUD)
+    match /exam_answer_keys/{examId} {
+      allow get: if isValidId(examId) && (
+                   isSuperAdmin() ||
+                   (isSignedIn() &&
+                    resource != null &&
+                    existing().isPublished == true &&
+                    exists(/databases/$(database)/documents/exam_attempts/$(request.auth.uid + '_' + examId)))
+                 );
+      allow list: if isSuperAdmin();
+      allow create: if isValidId(examId) && isSuperAdmin() && isValidExamAnswerKey(incoming());
+      allow update: if isValidId(examId) && isSuperAdmin() && isValidExamAnswerKey(incoming());
+      allow delete: if isValidId(examId) && isSuperAdmin();
+    }
+
+    // 10. Student MCQ Exam Attempts & History (Strictly isolated to owner + Super Admin audit)
+    match /exam_attempts/{attemptId} {
+      allow get: if isValidId(attemptId) && (
+                   isSuperAdmin() ||
+                   (resource == null && isOwnerPrefixedId(attemptId)) ||
+                   (resource != null && isSignedIn() && existing().userId == request.auth.uid)
+                 );
+      allow list: if isSuperAdmin() || (isSignedIn() && existing().userId == request.auth.uid);
+
+      allow create: if isValidId(attemptId) &&
+                       isSignedIn() &&
+                       isValidExamAttempt(incoming()) &&
+                       incoming().userId == request.auth.uid &&
+                       attemptId == (request.auth.uid + '_' + incoming().examId) &&
+                       isValidTimestamp(incoming().createdAt);
+
+      allow update: if isValidId(attemptId) &&
+                       isValidExamAttempt(incoming()) &&
+                       incoming().userId == existing().userId &&
+                       incoming().examId == existing().examId &&
+                       incoming().createdAt == existing().createdAt &&
+                       (
+                         isSuperAdmin() ||
+                         (isOwner(existing().userId) &&
+                          existing().status == 'SUBMITTED' &&
+                          incoming().status == 'GRADED' &&
+                          incoming().selectedAnswers == existing().selectedAnswers &&
+                          incoming().diff(existing()).affectedKeys().hasOnly(['score', 'correctCount', 'status', 'updatedAt'])) ||
+                         (isOwner(existing().userId) &&
+                          incoming().status == 'SUBMITTED' &&
+                          incoming().score == 0 &&
+                          incoming().correctCount == 0 &&
+                          incoming().diff(existing()).affectedKeys().hasOnly(['selectedAnswers', 'score', 'correctCount', 'status', 'updatedAt']))
+                       );
+
+      allow delete: if isValidId(attemptId) && isSuperAdmin();
+    }
+
+    // 11. Subscription Plans (Super Admin CRUD; Students read active plans or probe non-existent ref_c* IDs)
+    match /subscription_plans/{planId} {
+      allow get: if isValidId(planId) && (isSuperAdmin() || (isSignedIn() && (resource == null || existing().isActive == true)));
+      allow list: if isSuperAdmin() || (isSignedIn() && existing().isActive == true);
+      allow create: if isValidId(planId) && isSuperAdmin() && isValidSubscriptionPlan(incoming()) && isValidTimestamp(incoming().createdAt);
+      allow update: if isValidId(planId) && isSuperAdmin() && isValidSubscriptionPlan(incoming()) && incoming().createdAt == existing().createdAt;
+      allow delete: if isValidId(planId) && isSuperAdmin();
+    }
+
+    // 12. Dynamic Payment Method Settings (Super Admin CRUD; Students read active payment methods)
+    match /payment_methods/{methodId} {
+      allow get: if isValidId(methodId) && (isSuperAdmin() || (isSignedIn() && (resource == null || existing().isActive == true)));
+      allow list: if isSuperAdmin() || (isSignedIn() && existing().isActive == true);
+      allow create: if isValidId(methodId) && isSuperAdmin() && isValidPaymentMethod(incoming()) && isValidTimestamp(incoming().createdAt);
+      allow update: if isValidId(methodId) && isSuperAdmin() && isValidPaymentMethod(incoming()) && incoming().createdAt == existing().createdAt;
+      allow delete: if isValidId(methodId) && isSuperAdmin();
+    }
+
+    // 13. Duplicate Transaction ID Prevention Registry (Atomic WriteBatch Lock)
+    match /used_transaction_ids/{trxKey} {
+      allow get: if isValidId(trxKey) && isSignedIn();
+      allow list: if isSuperAdmin();
+
+      allow create: if isValidId(trxKey) &&
+                       isValidUsedTransactionLock(incoming()) &&
+                       incoming().normalizedTrxId == trxKey &&
+                       isValidTimestamp(incoming().createdAt) &&
+                       (
+                         isSuperAdmin() ||
+                         (isSignedIn() &&
+                          incoming().userId == request.auth.uid &&
+                          incoming().status == 'RESERVED' &&
+                          existsAfter(/databases/$(database)/documents/subscription_requests/$(incoming().requestId)))
+                       );
+
+      allow update: if isValidId(trxKey) &&
+                       isSuperAdmin() &&
+                       isValidUsedTransactionLock(incoming()) &&
+                       incoming().normalizedTrxId == existing().normalizedTrxId &&
+                       incoming().createdAt == existing().createdAt;
+
+      allow delete: if isValidId(trxKey) && isSuperAdmin();
+    }
+
+    // 14. Student Payment Requests (Students create PENDING only with verified price & unique TrxID; ONLY Super Admin approves/rejects)
+    match /subscription_requests/{requestId} {
+      allow get: if isValidId(requestId) && (isSuperAdmin() || (isSignedIn() && resource != null && existing().userId == request.auth.uid));
+      allow list: if isSuperAdmin() || (isSignedIn() && existing().userId == request.auth.uid);
+
+      allow create: if isValidId(requestId) &&
+                       isSignedIn() &&
+                       isValidSubscriptionRequest(incoming()) &&
+                       incoming().userId == request.auth.uid &&
+                       incoming().status == 'PENDING' &&
+                       (!('verifiedBy' in incoming()) || incoming().verifiedBy == '') &&
+                       (!('verifiedAt' in incoming()) || incoming().verifiedAt == null) &&
+                       isPlanPriceVerified(incoming()) &&
+                       isPaymentMethodSnapshotVerified(incoming()) &&
+                       existsAfter(/databases/$(database)/documents/used_transaction_ids/$(incoming().normalizedTrxId)) &&
+                       getAfter(/databases/$(database)/documents/used_transaction_ids/$(incoming().normalizedTrxId)).data.requestId == requestId &&
+                       isValidTimestamp(incoming().createdAt);
+
+      allow update: if isValidId(requestId) &&
+                       isSuperAdmin() &&
+                       isValidSubscriptionRequest(incoming()) &&
+                       incoming().userId == existing().userId &&
+                       incoming().planId == existing().planId &&
+                       incoming().amountBdt == existing().amountBdt &&
+                       incoming().transactionReference == existing().transactionReference &&
+                       incoming().normalizedTrxId == existing().normalizedTrxId &&
+                       incoming().createdAt == existing().createdAt &&
+                       incoming().verifiedBy == 'yyskhmPvvfeNl572FnVhZgYAaQx2' &&
+                       (existing().status == 'PENDING' || incoming().status == existing().status) &&
+                       incoming().diff(existing()).affectedKeys().hasOnly(['status', 'adminNote', 'rejectionReason', 'verifiedBy', 'verifiedAt', 'updatedAt']);
+
+      allow delete: if isValidId(requestId) && isSuperAdmin();
+    }
+
+    // 15. Verified Active User Subscriptions (ONLY Super Admin can create, update, or delete!)
+    match /subscriptions/{subscriptionId} {
+      allow get: if isValidId(subscriptionId) && (isSuperAdmin() || (isSignedIn() && resource != null && existing().userId == request.auth.uid));
+      allow list: if isSuperAdmin() || (isSignedIn() && existing().userId == request.auth.uid);
+      allow create: if isValidId(subscriptionId) && isSuperAdmin() && isValidSubscription(incoming()) && isValidTimestamp(incoming().createdAt);
+      allow update: if isValidId(subscriptionId) && isSuperAdmin() && isValidSubscription(incoming()) && incoming().userId == existing().userId && incoming().createdAt == existing().createdAt;
+      allow delete: if isValidId(subscriptionId) && isSuperAdmin();
+    }
+
+    // 16. Real-Time Payment & Approval In-App Notifications
+    match /notifications/{notificationId} {
+      allow get: if isValidId(notificationId) && (isSuperAdmin() || (isSignedIn() && resource != null && existing().recipientId == request.auth.uid));
+      allow list: if isSuperAdmin() || (isSignedIn() && existing().recipientId == request.auth.uid);
+
+      allow create: if isValidId(notificationId) &&
+                       isValidAppNotification(incoming()) &&
+                       isValidTimestamp(incoming().createdAt) &&
+                       (
+                         (isSuperAdmin() && incoming().senderUid == 'yyskhmPvvfeNl572FnVhZgYAaQx2') ||
+                         (isSignedIn() &&
+                          incoming().senderUid == request.auth.uid &&
+                          incoming().recipientId == 'yyskhmPvvfeNl572FnVhZgYAaQx2' &&
+                          incoming().notificationType == 'PAYMENT_REQUEST_SUBMITTED' &&
+                          incoming().isRead == false &&
+                          'relatedPaymentRequestId' in incoming() &&
+                          incoming().relatedPaymentRequestId is string &&
+                          incoming().relatedPaymentRequestId.size() >= 1 &&
+                          existsAfter(/databases/$(database)/documents/subscription_requests/$(incoming().relatedPaymentRequestId)) &&
+                          getAfter(/databases/$(database)/documents/subscription_requests/$(incoming().relatedPaymentRequestId)).data.userId == request.auth.uid)
+                       );
+
+      allow update: if isValidId(notificationId) &&
+                       isValidAppNotification(incoming()) &&
+                       incoming().createdAt == existing().createdAt &&
+                       (isSuperAdmin() || isOwner(existing().recipientId)) &&
+                       incoming().diff(existing()).affectedKeys().hasOnly(['isRead', 'updatedAt']);
+
+      allow delete: if isValidId(notificationId) && isSuperAdmin();
+    }
+
+    // 17. Private Student Bookmarks (Strictly isolated to owner)
+    match /bookmarks/{bookmarkId} {
+      allow get: if isValidId(bookmarkId) && (
+                   (resource == null && isOwnerPrefixedId(bookmarkId)) ||
+                   (resource != null && isSignedIn() && existing().userId == request.auth.uid)
+                 );
+      allow list: if isSignedIn() && existing().userId == request.auth.uid;
+
+      allow create: if isValidId(bookmarkId) &&
+                       isSignedIn() &&
+                       isValidBookmark(incoming()) &&
+                       incoming().userId == request.auth.uid &&
+                       isValidTimestamp(incoming().createdAt);
+
+      allow update: if isValidId(bookmarkId) &&
+                       isSignedIn() &&
+                       isValidBookmark(incoming()) &&
+                       existing().userId == request.auth.uid &&
+                       incoming().userId == existing().userId &&
+                       incoming().createdAt == existing().createdAt;
+
+      allow delete: if isValidId(bookmarkId) && isSignedIn() && resource != null && existing().userId == request.auth.uid;
+    }
+
+    // 18. Private Student Reading Progress (Strictly isolated to owner)
+    match /reading_progress/{progressId} {
+      allow get: if isValidId(progressId) && (
+                   (resource == null && isOwnerPrefixedId(progressId)) ||
+                   (resource != null && isSignedIn() && existing().userId == request.auth.uid)
+                 );
+      allow list: if isSignedIn() && existing().userId == request.auth.uid;
+
+      allow create: if isValidId(progressId) &&
+                       isSignedIn() &&
+                       isValidReadingProgress(incoming()) &&
+                       incoming().userId == request.auth.uid &&
+                       isValidTimestamp(incoming().createdAt);
+
+      allow update: if isValidId(progressId) &&
+                       isSignedIn() &&
+                       isValidReadingProgress(incoming()) &&
+                       existing().userId == request.auth.uid &&
+                       incoming().userId == existing().userId &&
+                       incoming().createdAt == existing().createdAt;
+
+      allow delete: if isValidId(progressId) && isSignedIn() && resource != null && existing().userId == request.auth.uid;
+    }
+
+    // 19. Private Student Personal Notebook (Strictly isolated to owner)
+    match /user_notes/{noteId} {
+      allow get: if isValidId(noteId) && isSignedIn() && resource != null && existing().userId == request.auth.uid;
+      allow list: if isSignedIn() && existing().userId == request.auth.uid;
+
+      allow create: if isValidId(noteId) &&
+                       isSignedIn() &&
+                       isValidUserNote(incoming()) &&
+                       incoming().userId == request.auth.uid &&
+                       isValidTimestamp(incoming().createdAt);
+
+      allow update: if isValidId(noteId) &&
+                       isSignedIn() &&
+                       isValidUserNote(incoming()) &&
+                       existing().userId == request.auth.uid &&
+                       incoming().userId == existing().userId &&
+                       incoming().createdAt == existing().createdAt &&
+                       incoming().diff(existing()).affectedKeys().hasOnly(['title', 'content', 'subjectTag', 'colorIndex', 'isPinned', 'updatedAt']);
+
+      allow delete: if isValidId(noteId) && isSignedIn() && resource != null && existing().userId == request.auth.uid;
+    }
+
+    // 20. Notices & Announcements (Super Admin CRUD; Students read published notices)
+    match /notices/{noticeId} {
+      allow get: if isValidId(noticeId) && (isSuperAdmin() || (isSignedIn() && resource != null && existing().isPublished == true));
+      allow list: if isSuperAdmin() || (isSignedIn() && existing().isPublished == true);
+      allow create: if isValidId(noticeId) && isSuperAdmin() && isValidNotice(incoming()) && isValidTimestamp(incoming().createdAt);
+      allow update: if isValidId(noticeId) && isSuperAdmin() && isValidNotice(incoming()) && incoming().createdAt == existing().createdAt;
+      allow delete: if isValidId(noticeId) && isSuperAdmin();
+    }
+
+    // 21. Centralized Application & Download Settings
+    match /app_settings/{settingId} {
+      allow get: if isValidId(settingId) && isSignedIn();
+      allow list: if isSuperAdmin();
+      allow create: if isValidId(settingId) && isSuperAdmin() && isValidAppSettings(incoming());
+      allow update: if isValidId(settingId) && isSuperAdmin() && isValidAppSettings(incoming());
+      allow delete: if isValidId(settingId) && isSuperAdmin();
+    }
+  }
+}

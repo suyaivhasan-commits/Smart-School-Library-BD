@@ -1,0 +1,16 @@
+name = "smart-school-storage-worker"
+main = "src/index.js"
+compatibility_date = "2024-04-05"
+compatibility_flags = ["nodejs_compat"]
+
+[vars]
+B2_ENDPOINT = "https://s3.us-east-005.backblazeb2.com"
+B2_REGION = "us-east-005"
+B2_BUCKET = "smart-school-library-files"
+FIREBASE_PROJECT_ID = "smart-school-library-bd"
+SUPER_ADMIN_UID = "yyskhmPvvfeNl572FnVhZgYAaQx2"
+
+# Secrets to be configured via `wrangler secret put <KEY>`:
+# - B2_KEY_ID
+# - B2_APPLICATION_KEY
+# - FIREBASE_SERVICE_ACCOUNT_JSON (optional for direct admin Firestore reads)
