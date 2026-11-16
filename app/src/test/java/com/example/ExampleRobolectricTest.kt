@@ -6,13 +6,11 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.getUnclippedBoundsInRoot
-import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
-import androidx.compose.ui.test.performScrollToNode
 import androidx.navigation.NavHostController
 import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
@@ -119,7 +117,6 @@ class ExampleRobolectricTest {
             SmartSchoolTheme(darkTheme = false) {
                 CompositionLocalProvider(LocalAppStrings provides stringsFor(AppLanguage.BN)) {
                     HomeScreen(
-                        currentUserUid = "normal_student_uid_99",
                         userProfile = UserProfile(userId = "normal_student_uid_99", name = "রাহাতুল ইসলাম", role = "student"),
                         classes = DefaultCatalogSeed.defaultClasses,
                         books = emptyList(),
@@ -145,8 +142,7 @@ class ExampleRobolectricTest {
                         onOpenBookmarks = {},
                         onOpenHistory = {},
                         onOpenSubscription = {},
-                        onOpenSettings = {},
-                        onOpenSuperAdmin = {}
+                        onOpenSettings = {}
                     )
                 }
             }
@@ -523,7 +519,7 @@ class ExampleRobolectricTest {
     }
 
     @Test
-    fun libraryHubAndPdfReaderAndAdminScreens_renderAndInteractWithoutCrashing() {
+    fun libraryHubAndPdfReaderScreens_renderAndInteractWithoutCrashing() {
         var activeView = "HUB"
         val booksWithBlankAndDuplicateIds = listOf(
             Textbook(id = "", titleBn = "বাংলা ব্যাকরণ", subjectNameBn = "বাংলা", classNumber = 9, stream = "ALL"),
@@ -549,7 +545,7 @@ class ExampleRobolectricTest {
                             onToggleBookBookmark = {},
                             onToggleGuideBookmark = {}
                         )
-                        "PDF" -> com.example.reader.PdfReaderScreen(
+                        else -> com.example.reader.PdfReaderScreen(
                             contentId = "test_pdf_1",
                             contentType = "BOOK",
                             titleBn = "বাংলা ব্যাকরণ",
@@ -565,23 +561,11 @@ class ExampleRobolectricTest {
                             savedLastPageOneBased = 1,
                             bookmarks = emptyList(),
                             appSettings = AppSettings(),
-                            onBack = { viewState.value = "ADMIN" },
+                            onBack = { viewState.value = "HUB" },
                             onSaveProgress = { _, _ -> },
                             onToggleWholeBookBookmark = {},
                             onTogglePageBookmark = {},
                             onShowMessage = {}
-                        )
-                        "ADMIN_BOOKS" -> com.example.admin.AdminBooksModule(
-                            books = booksWithBlankAndDuplicateIds,
-                            subjects = listOf(Subject(id = "s1", nameBn = "বাংলা", classNumber = 9)),
-                            onSave = {},
-                            onDelete = {}
-                        )
-                        else -> com.example.admin.AdminGuidesModule(
-                            guides = guidesSample,
-                            subjects = listOf(Subject(id = "s2", nameBn = "গণিত", classNumber = 9)),
-                            onSave = {},
-                            onDelete = {}
                         )
                     }
                 }
@@ -596,56 +580,6 @@ class ExampleRobolectricTest {
 
         // 2. PdfReaderScreen renders empty/missing URL error state cleanly without crashing
         composeRule.onNodeWithTag("pdf_reader_screen").assertIsDisplayed()
-    }
-
-    @Test
-    fun adminBooksAndGuidesModules_openDirectUploadScreenWithoutUrlFields() {
-        lateinit var switchToGuides: () -> Unit
-        composeRule.setContent {
-            val showGuides = androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(false) }
-            switchToGuides = { showGuides.value = true }
-            SmartSchoolTheme(darkTheme = false) {
-                CompositionLocalProvider(LocalAppStrings provides stringsFor(AppLanguage.BN)) {
-                    if (!showGuides.value) {
-                        com.example.admin.AdminBooksModule(
-                            books = listOf(Textbook(id = "ab1", titleBn = "গণিত", subjectNameBn = "গণিত", classNumber = 8)),
-                            subjects = listOf(Subject(id = "s1", nameBn = "গণিত", classNumber = 8)),
-                            onSave = {},
-                            onDelete = {}
-                        )
-                    } else {
-                        com.example.admin.AdminGuidesModule(
-                            guides = listOf(GuideNote(id = "ag1", titleBn = "বীজগণিত গাইড", subjectNameBn = "গণিত", classNumber = 8, chapter = "অধ্যায় ১")),
-                            subjects = listOf(Subject(id = "s1", nameBn = "গণিত", classNumber = 8)),
-                            onSave = {},
-                            onDelete = {}
-                        )
-                    }
-                }
-            }
-        }
-        composeRule.waitForIdle()
-        composeRule.onNodeWithText("নতুন বই যোগ করুন").performClick()
-        composeRule.waitForIdle()
-        composeRule.onNodeWithTag("admin_book_upload_screen").assertIsDisplayed()
-        composeRule.onNodeWithTag("upload_book_cover_button").assertIsDisplayed()
-        composeRule.onNodeWithTag("upload_complete_pdf_button").assertIsDisplayed()
-        // Verify all URL fields are strictly removed
-        composeRule.onNodeWithText("PDF URL", substring = true).assertDoesNotExist()
-        composeRule.onNodeWithText("Cover Image URL", substring = true).assertDoesNotExist()
-        composeRule.onNodeWithText("কভার ছবি URL", substring = true).assertDoesNotExist()
-        composeRule.onNodeWithTag("upload_screen_back_button").performClick()
-        composeRule.waitForIdle()
-
-        composeRule.runOnIdle { switchToGuides() }
-        composeRule.waitForIdle()
-        composeRule.onNodeWithText("নতুন গাইড/নোট").performClick()
-        composeRule.waitForIdle()
-        composeRule.onNodeWithTag("admin_book_upload_screen").assertIsDisplayed()
-        composeRule.onNodeWithTag("upload_book_cover_button").assertIsDisplayed()
-        composeRule.onNodeWithTag("upload_complete_pdf_button").assertIsDisplayed()
-        composeRule.onNodeWithTag("upload_screen_back_button").performClick()
-        composeRule.waitForIdle()
     }
 
     @Test
@@ -1076,127 +1010,6 @@ class ExampleRobolectricTest {
                 nowMillis = now
             )
         )
-    }
-
-    @Test
-    fun superAdminDashboard_replacesTopChipStripWithTwoColumnModuleCards_andNavigatesBackToDashboard() {
-        var exitedToApp = false
-
-        composeRule.setContent {
-            val activeModuleState = androidx.compose.runtime.remember {
-                androidx.compose.runtime.mutableStateOf(com.example.admin.AdminModule.DASHBOARD)
-            }
-            SmartSchoolTheme(darkTheme = false) {
-                CompositionLocalProvider(LocalAppStrings provides stringsFor(AppLanguage.BN)) {
-                    com.example.admin.SuperAdminPanelScaffold(
-                        activeModule = activeModuleState.value,
-                        onSelectModule = { activeModuleState.value = it },
-                        pendingPaymentCount = 2,
-                        unreadNotifCount = 1,
-                        onExitToStudentApp = { exitedToApp = true },
-                        onLogout = {}
-                    ) { mod, onSelect ->
-                        if (mod == com.example.admin.AdminModule.DASHBOARD) {
-                            com.example.admin.AdminDashboardOverview(
-                                users = listOf(
-                                    UserProfile(userId = "u1", name = "আরিফ", role = "student", isActive = true)
-                                ),
-                                classes = DefaultCatalogSeed.defaultClasses,
-                                educationLevels = DefaultCatalogSeed.defaultEducationLevels,
-                                streams = DefaultCatalogSeed.defaultStreams,
-                                subjects = emptyList(),
-                                books = listOf(
-                                    Textbook(id = "b1", titleBn = "গণিত", classNumber = 8)
-                                ),
-                                guides = listOf(
-                                    GuideNote(id = "g1", titleBn = "বিজ্ঞান গাইড", classNumber = 8)
-                                ),
-                                paymentMethods = emptyList(),
-                                subscriptions = emptyList(),
-                                requests = emptyList(),
-                                lang = AppLanguage.BN,
-                                onBootstrapClasses = {},
-                                onNavigateModule = onSelect
-                            )
-                        } else {
-                            androidx.compose.material3.Text(
-                                text = "Submodule: ${mod.name}",
-                                modifier = Modifier.testTag("active_submodule_screen")
-                            )
-                        }
-                    }
-                }
-            }
-        }
-
-        composeRule.waitForIdle()
-
-        // 1. Old horizontal top chip strip must no longer exist on compact phone screens
-        composeRule.onNodeWithTag("admin_chip_DASHBOARD").assertDoesNotExist()
-        composeRule.onNodeWithTag("admin_chip_PAYMENT_METHODS").assertDoesNotExist()
-        composeRule.onNodeWithTag("admin_chip_BOOKS").assertDoesNotExist()
-
-        // 2. Existing KPI metric cards appear ABOVE the new 2-column module cards section
-        composeRule.onNodeWithText("মোট শিক্ষার্থী").assertIsDisplayed()
-        composeRule.onNodeWithText("মোট বই ও গাইড").assertIsDisplayed()
-        val kpiBounds = composeRule.onNodeWithText("মোট শিক্ষার্থী").getUnclippedBoundsInRoot()
-        val moduleSectionBounds = composeRule.onNodeWithTag("admin_dashboard_module_cards_section")
-            .getUnclippedBoundsInRoot()
-        assertTrue(
-            "KPI metrics must remain above the Dashboard module cards",
-            kpiBounds.bottom.value <= moduleSectionBounds.top.value
-        )
-
-        // 3. First row has 2 cards side-by-side (PAYMENT_METHODS left, PAYMENT_NOTIFICATIONS right)
-        val pmBounds = composeRule.onNodeWithTag("admin_card_PAYMENT_METHODS").getUnclippedBoundsInRoot()
-        val notifBounds = composeRule.onNodeWithTag("admin_card_PAYMENT_NOTIFICATIONS").getUnclippedBoundsInRoot()
-        assertTrue(
-            "Expected 2 cards side-by-side per row",
-            notifBounds.left.value > pmBounds.right.value
-        )
-        assertTrue(
-            "Cards in the same row must align vertically",
-            abs(pmBounds.top.value - notifBounds.top.value) < 4f
-        )
-
-        // 4. Scroll to last card (QUICK_CONTENT) to ensure all 15 module cards are rendered
-        composeRule.onNodeWithTag("admin_dashboard_overview")
-            .performScrollToNode(hasTestTag("admin_card_QUICK_CONTENT"))
-        composeRule.onNodeWithTag("admin_card_QUICK_CONTENT").assertIsDisplayed()
-
-        // 5. Scroll to BOOKS card and open it
-        composeRule.onNodeWithTag("admin_dashboard_overview")
-            .performScrollToNode(hasTestTag("admin_card_BOOKS"))
-        composeRule.onNodeWithTag("admin_card_BOOKS").performClick()
-        composeRule.waitForIdle()
-
-        composeRule.onNodeWithTag("active_submodule_screen").assertIsDisplayed()
-        composeRule.onNodeWithText("Submodule: BOOKS").assertIsDisplayed()
-        composeRule.onNodeWithTag("admin_subscreen_back_to_dashboard_bar").assertIsDisplayed()
-        assertFalse(exitedToApp)
-
-        // 6. Tapping header back arrow while inside a sub-module returns to Dashboard (not exiting app)
-        composeRule.onNodeWithTag("admin_header_back_btn").performClick()
-        composeRule.waitForIdle()
-        composeRule.onNodeWithTag("admin_dashboard_overview").assertIsDisplayed()
-        assertFalse(exitedToApp)
-
-        // 7. Open PAYMENT_METHODS card and return via the sub-screen Back to Dashboard bar
-        composeRule.onNodeWithTag("admin_dashboard_overview")
-            .performScrollToNode(hasTestTag("admin_card_PAYMENT_METHODS"))
-        composeRule.onNodeWithTag("admin_card_PAYMENT_METHODS").performClick()
-        composeRule.waitForIdle()
-        composeRule.onNodeWithText("Submodule: PAYMENT_METHODS").assertIsDisplayed()
-
-        composeRule.onNodeWithTag("admin_subscreen_back_to_dashboard_bar").performClick()
-        composeRule.waitForIdle()
-        composeRule.onNodeWithTag("admin_dashboard_overview").assertIsDisplayed()
-        assertFalse(exitedToApp)
-
-        // 8. Tapping header back arrow while on Dashboard exits to student app
-        composeRule.onNodeWithTag("admin_header_back_btn").performClick()
-        composeRule.waitForIdle()
-        assertTrue(exitedToApp)
     }
 }
 

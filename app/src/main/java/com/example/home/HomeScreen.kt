@@ -28,7 +28,6 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.automirrored.filled.MenuBook
-import androidx.compose.material.icons.filled.AdminPanelSettings
 import androidx.compose.material.icons.filled.Bookmark
 import androidx.compose.material.icons.filled.Campaign
 import androidx.compose.material.icons.filled.Clear
@@ -79,7 +78,6 @@ import com.example.components.BrandWordmark
 import com.example.components.GuideItemCard
 import com.example.components.TextbookItemCard
 import com.example.components.classGradientFor
-import com.example.firebase.SecurityConstants
 import com.example.model.AppSettings
 import com.example.model.Bookmark
 import com.example.model.ContentClassGroupHelper
@@ -116,7 +114,6 @@ private data class QuickShortcut(
 
 @Composable
 fun HomeScreen(
-    currentUserUid: String,
     userProfile: UserProfile?,
     classes: List<SchoolClass>,
     educationLevels: List<EducationLevel> = emptyList(),
@@ -144,8 +141,7 @@ fun HomeScreen(
     onOpenBookmarks: () -> Unit,
     onOpenHistory: () -> Unit,
     onOpenSubscription: () -> Unit,
-    onOpenSettings: () -> Unit,
-    onOpenSuperAdmin: () -> Unit
+    onOpenSettings: () -> Unit
 ) {
     val strings = LocalAppStrings.current
     val lang = strings.language
@@ -228,22 +224,6 @@ fun HomeScreen(
                 }
 
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    // Strictly show Super Admin entry button ONLY for exact trusted UID
-                    if (SecurityConstants.isTrustedSuperAdmin(currentUserUid)) {
-                        IconButton(
-                            onClick = onOpenSuperAdmin,
-                            modifier = Modifier
-                                .size(48.dp)
-                                .testTag("home_super_admin_button")
-                        ) {
-                            Icon(
-                                imageVector = Icons.Filled.AdminPanelSettings,
-                                contentDescription = "Super Admin Panel",
-                                tint = GoldPremium
-                            )
-                        }
-                    }
-
                     IconButton(
                         onClick = onToggleTheme,
                         modifier = Modifier

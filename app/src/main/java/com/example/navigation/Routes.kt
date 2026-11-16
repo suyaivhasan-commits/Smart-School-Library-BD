@@ -56,7 +56,4 @@ object Routes {
     const val WELCOME_INTRO = "welcome_intro"
     const val LEGAL_INFO = "legal_info/{docType}"
     fun legalInfo(docType: String) = "legal_info/${encodeSegment(docType, "ABOUT")}"
-
-    // Completely separate Super Admin Panel entry route (strictly guarded by TRUSTED_SUPER_ADMIN_UID)
-    const val SUPER_ADMIN_ROOT = "super_admin_panel"
 }

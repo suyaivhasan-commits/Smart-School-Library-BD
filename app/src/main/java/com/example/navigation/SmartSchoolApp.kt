@@ -48,14 +48,11 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
-import com.example.admin.AdminViewModel
-import com.example.admin.SuperAdminPanelScreen
 import com.example.auth.AuthScreen
 import com.example.bookmarks.BookmarksScreen
 import com.example.bookmarks.ReadingHistoryScreen
 import com.example.classes.ClassSelectionScreen
 import com.example.components.EmptyOrErrorStateCard
-import com.example.data.AdminRepository
 import com.example.data.AuthRepository
 import com.example.data.LibraryRepository
 import com.example.data.PreferencesRepository
@@ -84,7 +81,6 @@ import com.example.notebook.NotebookScreen
 import com.example.profile.NoticesScreen
 import com.example.profile.ProfileScreen
 import com.example.reader.PdfReaderScreen
-import com.example.data.BookStorageUploader
 import com.example.settings.LegalInfoScreen
 import com.example.settings.SettingsScreen
 import com.example.subscription.PremiumAccessGateScreen
@@ -254,8 +250,7 @@ private fun AuthenticatedStudentWorkspace(
     val hideStudentNavChrome = currentRoute.startsWith("pdf_reader") ||
         currentRoute.startsWith("exam_session") ||
         currentRoute.startsWith("premium_gate") ||
-        currentRoute == Routes.WELCOME_INTRO ||
-        currentRoute == Routes.SUPER_ADMIN_ROOT
+        currentRoute == Routes.WELCOME_INTRO
 
     fun navigateTopLevel(route: String) {
         if (route == currentRoute) return
@@ -467,7 +462,6 @@ private fun AuthenticatedStudentWorkspace(
                     ) {
                         composable(Routes.HOME) {
                             HomeScreen(
-                                currentUserUid = currentUserUid,
                                 userProfile = userProfile,
                                 classes = classes,
                                 educationLevels = educationLevels,
@@ -568,12 +562,7 @@ private fun AuthenticatedStudentWorkspace(
                                         )
                                     )
                                 },
-                                onOpenSettings = { navController.navigate(Routes.SETTINGS) },
-                                onOpenSuperAdmin = {
-                                    if (SecurityConstants.isTrustedSuperAdmin(currentUserUid)) {
-                                        navController.navigate(Routes.SUPER_ADMIN_ROOT)
-                                    }
-                                }
+                                onOpenSettings = { navController.navigate(Routes.SETTINGS) }
                             )
                         }
 
@@ -1338,37 +1327,6 @@ private fun AuthenticatedStudentWorkspace(
                                 appSettings = appSettings,
                                 onBack = { navController.popBackStack() }
                             )
-                        }
-
-                        // Completely Separate Super Admin Panel Route — Strictly Guarded by TRUSTED_SUPER_ADMIN_UID
-                        composable(Routes.SUPER_ADMIN_ROOT) {
-                            if (SecurityConstants.isTrustedSuperAdmin(currentUserUid)) {
-                                val adminVm: AdminViewModel = viewModel(
-                                    key = "super_admin_$currentUserUid",
-                                    factory = viewModelFactory {
-                                        initializer {
-                                            AdminViewModel(
-                                                currentUserId = currentUserUid,
-                                                adminRepository = AdminRepository(appContext),
-                                                libraryRepository = LibraryRepository(appContext),
-                                                bookStorageUploader = BookStorageUploader(appContext)
-                                            )
-                                        }
-                                    }
-                                )
-                                SuperAdminPanelScreen(
-                                    currentUserUid = currentUserUid,
-                                    adminViewModel = adminVm,
-                                    onExitToStudentApp = { navController.popBackStack() },
-                                    onLogout = {
-                                        scope.launch { authRepository.signOut(context) }
-                                    }
-                                )
-                            } else {
-                                LaunchedEffect(Unit) {
-                                    navController.popBackStack()
-                                }
-                            }
                         }
                     }
                 }
